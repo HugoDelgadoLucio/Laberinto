@@ -1,19 +1,15 @@
 section .data
-    fmt_salto db " ", 10,0
-    fmt_salir db  "Saliendo del juego",10,0
-    fmt_reiniciar db  "Reiniciando Laberinto",10,0
     fmt_ganar db "  Felicidades!!!, completaste el laberinto, GANASTE.",10,0
+    fmt_salto db " ", 10,0
     fmt_espacio db " ",0
     fmt_char db "%c ",0
-    fmt_depu db "-------------",10,0
-    fmt_depu2 db "zzzzzzzzzzzzz",10,0
-    fmt_final db "*************",10,0
 
 section .text
     global Laberinto
-    extern printf, scanf, getchar
+    extern printf
 
 Laberinto:
+    ;Se hacen push a los registros de memoria a usar
     push rbp
     mov rbp, rsp
     push r12
@@ -24,147 +20,223 @@ Laberinto:
 
     sub rsp, 48
 
-    mov r12, rcx   ;puntero a la matriz
-    mov r13, rdx   ;renglon actual
-    mov r14, r8    ;columna actual
+    mov r12, rcx    ;puntero a la matriz
+    mov r13, rdx    ;renglon actual (nueva posición)
+    mov r14, r8     ;columna actual (nueva posición)
+    mov r15, r9     ;renglon anterior (posición actual del jugador)
+    mov rbx, [rbp+48]   ;columna anterior (posición actual del jugador)
 
-    ;ir a la posicion actual del jugador
-    ; Calcular offset = (fila_jugador * 15 + col_jugador)
-    mov eax, r13d       ; fila del jugador
-    mov ebx, 15         ; número de columnas
-    mul ebx             ; eax = fila * 15
-    add eax, r14d       ; eax = fila * 15 + columna
-    movsxd rax, eax     ; convertir a 64 bits
-
-    xor r15d, r15d
+    ;se dirige a la nueva posicion en la matriz con respecto al movimiento indicado por el usuario
+    mov eax, r13d 
+    mov ecx, 15    
+    mul ecx             
+    add eax, r14d
+    movsxd rax, eax 
 
 movimiento:
-    ; Verificar si la nueva posición es una pared
+    ; Verificar si la nueva posición es una pared(#), es la meta(X) o un camino libre(.)
+
     cmp byte [r12 + rax], '#'
-    je reiniciar
+    je inicializarPared
     
-    ; Verificar si la nueva posición es el final
     cmp byte [r12 + rax], 'X'
-    je ganaste
+    je realizarMovGanar
     
-    ; Verificar si es camino libre ('.')
     cmp byte [r12 + rax], '.'
-    je realizarMov
+    je realizarMovCamino
+
+realizarMovCamino:
+    ;Calcular cual es la posicion anterior
+    mov eax, r15d       ;fila anterior
+    mov ecx, 15         
+    mul ecx            
+    add eax, ebx        ;columna anterior
+    movsxd rdx, eax
     
-    ; Verificar si es la posición actual del jugador ('F') - permite quedarse en el mismo lugar
-    cmp byte [r12 + rax], 'F'
-    je realizarMov
-    
-    ; Si no es ninguna de las anteriores, es movimiento inválido
-    jmp reiniciar
+    mov byte [r12 + rdx], '.'    ;Colocar un punto en la posicion anterior
 
-realizarMov:
-    ; PASO 1: Calcular offset de la posición actual del jugador (donde está ahora)
-    mov eax, r15d       ; fila actual del jugador
-    mov ecx, 15         ; número de columnas  
-    mul ecx             ; eax = fila_actual * 15
-    add eax, ebx        ; eax = fila_actual * 15 + columna_actual
-    movsxd rax, eax     ; convertir a 64 bits
+    ;Calcular la nueva posicion
+    mov eax, r13d       ;nueva fila
+    mov ecx, 15        
+    mul ecx            
+    add eax, r14d       ;nueva columna
+    movsxd rax, eax 
 
-    ; PASO 2: Limpiar la posición anterior - poner punto '.' donde estaba
-    mov byte [r12 + rax], '.'
+    mov byte [r12 + rax], 'F'       ;Coloca la ficha en la nueva posicion
 
-    ; PASO 3: Calcular offset de la nueva posición (donde se va a mover)
-    mov eax, r13d       ; nueva fila
-    mov ecx, 15         ; número de columnas
-    mul ecx             ; eax = nueva_fila * 15
-    add eax, r14d       ; eax = nueva_fila * 15 + nueva_columna
-    movsxd rax, eax     ; convertir a 64 bits
+inicializarCamino:
+    ;Limpia o pone un 0 en r15 para ir a la posicion 0 de la matriz para poder imprimirla
+    xor r15d, r15d
 
-    ; PASO 4: Colocar al jugador en la nueva posición
-    mov byte [r12 + rax], 'F'
+loop_filaCamino:
+    cmp r15d, 15     ;Compara el registro r15 con un 15 (numero de renglones) para saber si se ha recorrido toda la matriz
+    jge finCamino       ;Si es mayor a 15, ya termino de imprimir y va a la funcion finCamino
 
-    ; Movimiento realizado exitosamente
-    ;mov rax, 2          ; Retornar 2 para indicar movimiento válido
-    ;jmp salir
+    xor ebx, ebx        ;Resetea el ebx cada que salta a un nuevo renglon para imprimir todas ls columans del renglon
 
-loop_fila:
-    cmp r15d, 15        ; Comparar con número de filas (0-14)
-    jge fin
+loop_colCamino:
+    cmp ebx, 15     ;Compara el registro ebx con un 15 para saber si ya se recorrieron todas las columnas de la matriz
+    jge nueva_lineaCamino       ;Si es mayor a 15, ya termino de imprimir las columnas del renglon y va a la funcion nueva_lineaCamino
 
-    xor ebx, ebx        ; columna = 0 (contador de columnas para imprimir)
+    ;Calcular la siguiente posicion a imprimir
+    mov eax, r15d
+    mov ecx, 15 
+    mul ecx
+    add eax, ebx
+    movsxd rax, eax
 
-loop_col:
-    cmp ebx, 15         ; Comparar con número de columnas (0-14)
-    jge nueva_linea
-
-    ; Calcular offset = (fila_actual * 15 + col_actual)
-    mov eax, r15d       ; fila actual para imprimir
-    mov ecx, 15         ; número de columnas
-    mul ecx             ; eax = fila * 15
-    add eax, ebx        ; eax = fila * 15 + columna
-    movsxd rax, eax     ; convertir a 64 bits
-
-    ; Verificar si estamos en la posición del jugador
-    cmp r15d, r13d      ; comparar fila actual con fila del jugador
-    jne imprimir_caracter
-    cmp ebx, r14d       ; comparar columna actual con columna del jugador
-    jne imprimir_caracter
-    
-    ; Si estamos en la posición del jugador, imprimir '@' o 'P'
-    lea rcx, [rel fmt_char]
-    mov edx, 'F'        ; Carácter del jugador
+    ;Ahora se imprime el carácter del laberinto
+    lea rcx, [rel fmt_char]     ;Se carga el formato de impresion
+    movzx edx, byte [r12 + rax]     ;Cargar carácter del laberinto
     sub rsp, 32
-    call printf
-    add rsp, 32
-    jmp siguiente_columna
-
-imprimir_caracter:
-    ; Imprimir el carácter del laberinto
-    lea rcx, [rel fmt_char]
-    movzx edx, byte [r12 + rax]  ; Cargar carácter del laberinto
-    sub rsp, 32
-    call printf
+    call printf     ;se imprime el caraccter con el extern printf
     add rsp, 32
 
-siguiente_columna:
-    inc ebx             ; Siguiente columna
-    jmp loop_col
+siguiente_columnaCamino:
+    inc ebx             ;Incrementa el contador de las columnas
+    jmp loop_colCamino      ;Regresa a la funcion loop_colCamino para seguir imprimiendo las columnas del renglon
 
-nueva_linea:
-    ; Imprimir salto de línea al final de cada fila
+nueva_lineaCamino:
+    ;Imprimir salto de línea al final de cada fila
     lea rcx, [rel fmt_salto]
     sub rsp, 32
     call printf
     add rsp, 32
+    inc r15d            ;Incrementa el contador de los renglones
+    jmp loop_filaCamino
 
-    inc r15d            ; Siguiente fila
-    jmp loop_fila        
+finCamino:
+    xor rax, rax        ;Limpia rax para retornar un 0, para indicar que se realizo el movimiento de forma correcta
+    jmp salir       ;Salta a la funcion final llamada salir
 
-reiniciar:
-    lea rcx, [rel fmt_depu2]  ; Usar lea para direcciones
+inicializarPared:
+    ;Limpia o pone un 0 en r15 para ir a la posicion 0 de la matriz para poder imprimirla
+    xor r15d, r15d
+
+loop_filaPared:
+    cmp r15d, 15        ;Compara el registro r15 con un 15 (numero de renglones) para saber si se ha recorrido toda la matriz
+    jge finPared        ;Si es mayor a 15, ya termino de imprimir y va a la funcion finPared
+
+    xor ebx, ebx        ;Resetea el ebx cada que salta a un nuevo renglon para imprimir todas ls columnas del renglon
+
+loop_colPared:
+    cmp ebx, 15         ;Compara el registro ebx con un 15 para saber si ya se recorrieron todas las columnas de la matriz
+    jge nueva_lineaPared        ;Si es mayor a 15, ya termino de imprimir las columnas del renglon y va a la funcion nueva_lineaPared
+
+    ;Calcular la siguiente posicion a imprimir
+    mov eax, r15d  
+    mov ecx, 15 
+    mul ecx
+    add eax, ebx
+    movsxd rax, eax
+
+    ;Ahora se imprime el carácter del laberinto
+    lea rcx, [rel fmt_char]     ;Se carga el formato de impresion
+    movzx edx, byte [r12 + rax]     ;Cargar carácter del laberinto
+    sub rsp, 32
+    call printf     ;se imprime el caraccter con el extern printf
+    add rsp, 32
+
+siguiente_columnaPared:
+    inc ebx             ;Incrementa el contador de las columnas
+    jmp loop_colPared       ;Regresa a la funcion loop_colCamino para seguir imprimiendo las columnas del renglon
+
+nueva_lineaPared:
+    ;Imprimir salto de línea al final de cada fila
+    lea rcx, [rel fmt_salto]
     sub rsp, 32
     call printf
     add rsp, 32
-    mov rax, 1          ; Retornar 1 para indicar reinicio
-    jmp salir
+    inc r15d            ;Incrementa el contador de los renglones
+    jmp loop_filaPared
 
-ganaste:
-    lea rcx, [rel fmt_ganar]  ; Usar lea para direcciones
+finPared:
+    mov rax, 2      ;Carga un 2 en rax para indicar que el movimiento se topo con una pared
+    jmp salir       ;Salta a la funcion final llamada salir
+
+realizarMovGanar:
+    ;Calcular cual es la posicion anterior
+    mov eax, r15d       ;fila anterior
+    mov ecx, 15         
+    mul ecx            
+    add eax, ebx        ;columna anterior
+    movsxd rdx, eax
+    
+    mov byte [r12 + rdx], '.'       ;Colocar un punto en la posicion anterior
+
+    ;Calcular la nueva posicion
+    mov eax, r13d       ;nueva fila
+    mov ecx, 15        
+    mul ecx            
+    add eax, r14d       ;nueva columna
+    movsxd rax, eax
+
+    mov byte [r12 + rax], 'F'       ;Coloca la ficha en la nueva posicion
+
+inicializarGanar:
+    ;Limpia o pone un 0 en r15 para ir a la posicion 0 de la matriz para poder imprimirla
+    xor r15d, r15d
+
+loop_filaGanar:
+    cmp r15d, 15        ;Compara el registro r15 con un 15 (numero de renglones) para saber si se ha recorrido toda la matriz
+    jge finGanar        ;Si es mayor a 15, ya termino de imprimir y va a la funcion finGanar
+
+    xor ebx, ebx        ;Resetea el ebx cada que salta a un nuevo renglon para imprimir todas ls columans del renglon
+
+loop_colGanar:
+    cmp ebx, 15         ;Calcular la siguiente posicion a imprimir
+    jge nueva_lineaGanar        ;Si es mayor a 15, ya termino de imprimir las columnas del renglon y va a la funcion nueva_lineaGanar
+
+    ;Calcular la siguiente posicion a imprimir
+    mov eax, r15d
+    mov ecx, 15
+    mul ecx
+    add eax, ebx
+    movsxd rax, eax
+
+    ;Ahora se imprime el carácter del laberinto
+    lea rcx, [rel fmt_char]     ;Se carga el formato de impresion
+    movzx edx, byte [r12 + rax]     ;Cargar carácter del laberinto
+    sub rsp, 32
+    call printf     ;se imprime el caracter con el extern printf
+    add rsp, 32
+
+siguiente_columnaGanar:
+    inc ebx         ;Incrementa el contador de las columnas
+    jmp loop_colGanar       ;Regresa a la funcion loop_colCamino para seguir imprimiendo las columnas del renglon
+
+nueva_lineaGanar:
+    ;Imprimir salto de línea al final de cada fila
+    lea rcx, [rel fmt_salto]
     sub rsp, 32
     call printf
     add rsp, 32
-    mov rax, 10          ; Retornar 1 para indicar reinicio
-    jmp salir
+    inc r15d            ;Incrementa el contador de los renglones
+    jmp loop_filaGanar
 
-fin:
-    lea rcx, [rel fmt_final]  ; Usar lea para direcciones
+finGanar:
+    lea rcx, [rel fmt_salto]        ;Imprime un salto de linea
     sub rsp, 32
     call printf
     add rsp, 32
-    xor rax, rax        ; Retornar 0 (continuar/salir normal)
+    lea rcx, [rel fmt_ganar]        ;Imprime el mensaje de victoria
+    sub rsp, 32
+    call printf
+    add rsp, 32
+    lea rcx, [rel fmt_salto]        ;Un ultimo salto de linea
+    sub rsp, 32
+    call printf
+    add rsp, 32
+    mov rax, 10     ;mueve a rax un 10 para al momento de retornar, indicar que el usuario gano el juego
+    jmp salir       ;salta a salir
 
 salir:
-    add rsp, 48
+    add rsp, 48     ;suma a rsp lo que se estuvo usando de la pila a lo largo del programa
+    ;elimina los registros de la pila con pop
     pop rbx
     pop r15
     pop r14
     pop r13
     pop r12
     pop rbp
-    ret
+    ret     ;retorna lo que hay en rax
